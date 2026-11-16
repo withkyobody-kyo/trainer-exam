@@ -1,0 +1,114 @@
+트레이너 자격증 문제 은행집 — GitHub Pages 게시용
+
+이 폴더 안의 파일을 그대로 웹사이트에 게시하면 됩니다.
+별도 설치·빌드·외부 라이브러리·유료 API가 필요 없는 정적 웹사이트입니다.
+현재 사용 중인 최신 단일 HTML에서 3,000문항과 원문 이미지 413장을 분리했습니다.
+기존 단일 index.html은 원래 위치에 그대로 보관했습니다.
+
+1. GitHub Desktop으로 올리기
+
+이미 trainer-exam 저장소를 만들었다면, 이 폴더의 '내용물' 전체를
+저장소 폴더 안에 복사하세요. 저장소 바로 아래에 index.html이 있어야 합니다.
+
+저장소를 아직 만들지 않았다면 GitHub Desktop의 File → New Repository에서
+Name을 trainer-exam, Local path를 이 폴더의 부모 폴더로 선택하세요.
+README·Git ignore·License는 추가하지 않고 Create repository를 누르면
+이 폴더를 저장소로 관리할 수 있습니다. 별도 위치에 저장소를 만든 뒤
+이 폴더 내용물을 복사해도 됩니다.
+
+GitHub Desktop에서 변경 파일을 확인하고 Summary에 '문제은행 게시용 등록'을
+입력한 뒤 Commit to main을 누르세요. Publish repository를 누르고,
+무료 GitHub Pages를 사용할 경우 Keep this code private 체크를 해제하세요.
+공개 저장소에는 업로드한 코드와 문제 자료도 공개됩니다.
+
+2. 사이트 주소 만들기
+
+GitHub의 해당 저장소 → Settings → Pages에서 다음을 선택하세요.
+Source: Deploy from a branch
+Branch: main (다른 기본 브랜치를 사용한다면 실제 브랜치 선택)
+Folder: / (root)
+Save를 누르고 게시가 끝나면 Visit site로 열 수 있습니다.
+주소 형식: https://사용자이름.github.io/trainer-exam/
+
+중요: 이 폴더 내용물 전체를 올리세요. index.html만 올리거나 ZIP 파일만
+올리면 작동하지 않습니다. 기존 104MiB 오프라인 index.html, PDF 원본,
+개인 학습 기록 백업, question-bank 작업 폴더는 게시에 필요하지 않습니다.
+이미지가 많으므로 브라우저 업로드보다 GitHub Desktop 사용이 편합니다.
+.nojekyll 파일은 일반 정적 파일로 게시하기 위한 빈 파일입니다.
+
+3. 파일 구성과 수정
+
+index.html               화면의 기본 구조, 사이트 이름
+css/style.css            색상, 글씨 크기, 반응형 디자인
+js/app.js                문제 풀이, 채점, 기록, 북마크, JSON 가져오기
+js/core.js               채점·문제 데이터 검증 규칙
+js/explanations.js       해설을 필요할 때 불러오고 JSON 내보내기에 포함
+js/bootstrap.js          데이터 불러오기와 시작 화면
+js/web-files.js          웹 이미지 로딩, 휴대 가능한 JSON 내보내기
+data/exam-config.json    시험 구성·공식 안내 출처·확인일
+data/health.json         건강운동관리사 1,450문항
+data/sports.json         생활스포츠지도사 2급 1,550문항
+data/page-assets.json    원문 이미지 ID와 상대 경로 연결
+data/explanations/      시험·연도별 학습용 작성 해설
+images/                 원문 이미지 413장
+favicon.svg              브라우저 탭 아이콘
+
+모든 주소는 상대 경로라 저장소 이름이나 사용자 이름이 바뀌어도 사용할 수
+있습니다. 기존 문제·정답·출처·사이트 이름을 유지했습니다.
+시험 안내의 확인일은 원본에 있는 날짜를 유지했습니다.
+
+방문자가 사이트의 '문제 불러오기'로 추가한 문제는 해당 브라우저에만
+저장됩니다. 모든 방문자에게 문제를 추가하려면 해당 시험 JSON 배열에
+문제를 넣어 저장소를 업데이트하세요. 예시 형식은 사이트의
+문제 데이터 → 예시 JSON 내려받기로 받을 수 있습니다.
+문제 ID는 중복되면 안 됩니다. 원문 이미지가 있는 새 문제는 images에
+파일을 넣고 page-assets.json에 './images/파일명.webp'를 연결하세요.
+
+수정 후 GitHub Desktop에서 Commit to main → Push origin을 누르면
+GitHub Pages가 변경 내용을 반영합니다.
+
+4. 학습 기록 옮기기
+
+기존 오프라인 파일에서 문제 데이터 → 학습 기록 백업을 누르세요.
+게시한 사이트에서 문제 데이터 → 학습 기록 복원으로 백업을 선택하세요.
+오답·북마크·메모·완료한 학습 기록을 가져올 수 있습니다.
+복원 시 진행 중이던 풀이는 종료되며 기존 웹사이트 기록을 대체합니다.
+직접 추가한 문제가 있다면 해당 문제 JSON을 먼저 불러오세요.
+기록은 기기·브라우저·사이트 주소별로 저장되며 자동 동기화되지 않습니다.
+
+5. 미리보기와 인터넷 연결
+
+이 웹 게시용 index.html을 더블클릭하면 실행 방법 안내가 나옵니다.
+문제 JSON을 불러오므로 HTTP/HTTPS 주소에서 실행해야 합니다.
+인터넷 없이 파일을 더블클릭해서 사용하려면 원래의 단일 HTML을 쓰세요.
+
+개발용 로컬 미리보기 (Python 3이 설치되어 있는 경우):
+이 폴더를 터미널에서 연 뒤 python3 -m http.server 8765 --bind 127.0.0.1
+브라우저에서 http://127.0.0.1:8765/ 접속. 종료는 Ctrl+C.
+
+첫 화면에서는 문제 텍스트와 설정만 읽습니다. 각 원문 이미지는 해당 문제를
+열 때 불러오며, 전체 이미지를 미리 다운로드하지 않습니다.
+완전한 오프라인 웹 앱이나 로그인·기기 간 동기화 기능은 추가하지 않았습니다.
+문제 JSON 내보내기에는 호환성을 위해 원문 이미지를 모두 포함하므로
+약 104MiB 파일이 생성됩니다. 내보내는 동안 인터넷 연결이 필요합니다.
+
+공식 안내:
+https://docs.github.com/en/pages/getting-started-with-github-pages/creating-a-github-pages-site
+https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site
+
+6. 추가된 해설 기능
+
+연습에서는 ‘정답·해설 확인’을 누르면 정답 근거, 선택지별 설명,
+기억할 핵심과 참고 자료를 볼 수 있습니다. 모의고사에서는 제출 후
+결과 화면의 ‘전체 문제·해설 보기’로 확인합니다.
+작성 해설은 공식 해설이 아닌 AI 초안이며, 검토가 필요한 문항은 별도로
+표시합니다. 공식 정답표와 충돌할 가능성이 있는 문항도 정답표의 채점
+번호를 자동으로 바꾸지 않습니다. 공식 정답 미확인 문항의 추정 정답은
+채점에 사용하지 않습니다.
+
+현재 작성·검토 필요·미작성 수는 사이트의 ‘문제 데이터’에서 확인하세요.
+웹 버전은 해설을 볼 때 해당 시험·연도 파일을 불러옵니다.
+단일 오프라인 index.html에는 작성된 해설이 직접 들어 있습니다.
+문제 JSON 내보내기는 해설 본문·참고 자료·검토 상태도 함께 보관합니다.
+웹에 업데이트할 때는 js, css, data/explanations를 포함한 폴더 전체를
+다시 업로드하세요. 기존 학습 기록을 초기화할 필요는 없습니다.
