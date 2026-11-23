@@ -31,5 +31,7 @@ vm.createContext(context);vm.runInContext(fs.readFileSync(path.join(__dirname,'.
  assert.match(feedback.textContent,/발송 요청이 완료/);assert.equal(values.password,'');assert.equal(values.email,'withkyobody@gmail.com');
  values.password='unit-test-placeholder';const network=handlers.submit({preventDefault(){},target:form});pending({error:{message:'Failed to fetch'}});await network;
  assert.match(feedback.textContent,/인터넷 연결/);assert.equal(values.password,'unit-test-placeholder');assert.equal(button.disabled,false);
+ client.auth.signInWithPassword=async()=>({data:{},error:null});tab.dataset.authTab='login';await handlers.click({target:{closest:()=>tab}});
+ await handlers.submit({preventDefault(){},target:form});assert.match(dialog.innerHTML,/로그인했습니다/);assert.doesNotMatch(dialog.innerHTML,/가입·로그인 서버에 요청/);
  console.log('PASS: native submit untouched, visible progress, duplicate guard, SMTP/network errors visible, input preserved on failure, success clears password');
 })().catch(e=>{console.error(e);process.exitCode=1;});

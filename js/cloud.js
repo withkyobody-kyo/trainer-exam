@@ -168,7 +168,7 @@ async function authSubmit(event){
  event.preventDefault();
  const form=event.target;if(form.id!=='account-form'||authBusy)return;
  const button=form.querySelector('button[type=submit]');if(!button)return;
- const buttonLabel=button.textContent;authBusy=true;button.disabled=true;button.textContent='요청 중…';form.setAttribute('aria-busy','true');
+ const buttonLabel=button.textContent,action=recovery?'recovery':authTab;authBusy=true;button.disabled=true;button.textContent='요청 중…';form.setAttribute('aria-busy','true');
  document.querySelectorAll('[data-auth-tab]').forEach(b=>b.disabled=true);
  authFeedback('가입·로그인 서버에 요청하고 있습니다. 잠시만 기다려 주세요.');
  try{
@@ -176,17 +176,17 @@ async function authSubmit(event){
   if(!client)throw Error('로그인 연결을 준비하지 못했습니다. 페이지를 새로고침해 주세요.');
   if(!navigator.onLine)throw Error('인터넷 연결을 확인해 주세요. 입력 내용은 이 창에 유지됩니다.');
   let r;
-  if(recovery){r=await client.auth.updateUser({password});if(!r.error){recovery=false;notice='비밀번호를 변경했습니다.';}}
-  else if(authTab==='login')r=await client.auth.signInWithPassword({email,password});
-  else if(authTab==='signup'){
+  if(action==='recovery'){r=await client.auth.updateUser({password});if(!r.error)recovery=false;}
+  else if(action==='login')r=await client.auth.signInWithPassword({email,password});
+  else if(action==='signup'){
    if(!CFG.publicSignupReady&&email.toLowerCase()!==CFG.adminEmail)throw Error('현재 테스트 가입은 '+CFG.adminEmail+' 계정으로 진행해 주세요. 이메일 주소를 확인해 주세요.');
    r=await client.auth.signUp({email,password,options:{emailRedirectTo:CFG.redirectUrl,data:{learning_consent:CFG.consentVersion}}});
   }else r=await client.auth.resetPasswordForEmail(email,{redirectTo:CFG.redirectUrl});
   if(r.error)throw r.error;
   const passwordInput=form.querySelector('[name="password"]');if(passwordInput)passwordInput.value='';
-  if(authTab==='signup')authFeedback('✓ 인증 메일 발송 요청이 완료됐습니다. 받은편지함과 스팸함을 확인하고 메일의 인증 링크를 눌러 주세요.');
-  else if(authTab==='reset')authFeedback('✓ 비밀번호 재설정 메일을 요청했습니다. 받은 메일의 링크를 눌러 새 비밀번호를 설정해 주세요.');
-  else {notice=notice||'로그인했습니다.';showAccount();}
+  if(action==='signup')authFeedback('✓ 인증 메일 발송 요청이 완료됐습니다. 받은편지함과 스팸함을 확인하고 메일의 인증 링크를 눌러 주세요.');
+  else if(action==='reset')authFeedback('✓ 비밀번호 재설정 메일을 요청했습니다. 받은 메일의 링크를 눌러 새 비밀번호를 설정해 주세요.');
+  else {notice=action==='recovery'?'비밀번호를 변경했습니다.':'로그인했습니다.';showAccount();}
  }catch(error){authFeedback(authFailure(error),true);}
  finally{
   authBusy=false;button.disabled=false;button.textContent=buttonLabel;form.setAttribute('aria-busy','false');
