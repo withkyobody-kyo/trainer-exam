@@ -10,7 +10,7 @@
 
 2. 프로젝트를 새로 구성하는 순서
 - Supabase 가입/로그인 → 조직과 무료 프로젝트 생성 → 서울 지역 선택.
-- SQL Editor에서 supabase 폴더의 001~004 SQL을 번호 순서대로 실행.
+- SQL Editor에서 supabase 폴더의 001~004 SQL을 번호 순서대로 실행하고 006_lookup_indexes.sql과 007_canonical_results.sql도 실행. 005는 운영자의 이메일 인증 후 실행합니다.
 - 002는 현재 3,730문항의 서버 기준 정답표입니다. 문제 ID/정답을 바꿀 때에는 클라이언트와 서버 기준표를 함께 검토해야 합니다.
 - Authentication → Sign In / Providers → Email 활성화 및 이메일 인증 유지.
 - Authentication → URL Configuration → Site URL과 Redirect URLs 모두 https://withkyobody-kyo.github.io/trainer-exam/ 으로 등록. 불필요한 와일드카드는 추가하지 않습니다.

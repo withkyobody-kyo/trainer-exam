@@ -1,0 +1,77 @@
+-- Disposable fixtures exist only inside this transaction; all effects are rolled back.
+begin;
+do $$
+declare a uuid:=gen_random_uuid(); b uuid:=gen_random_uuid(); q text; missing text; answer integer;
+ q2 text; sid3 text; sid text:=gen_random_uuid()::text; sid2 text:=gen_random_uuid()::text; op uuid:=gen_random_uuid(); aid uuid:=gen_random_uuid();
+ body jsonb; v jsonb; stats jsonb; ok boolean; n integer; start_ms bigint:=floor(extract(epoch from clock_timestamp())*1000);
+begin
+ select id,answers[1] into q,answer from trainer_private.catalog where exam='health' and answers is not null limit 1;
+ select id into q2 from trainer_private.catalog where exam='health' and answers is not null and id<>q limit 1;
+ select id into missing from trainer_private.catalog where answers is null limit 1;
+ insert into auth.users(id,email,email_confirmed_at,is_anonymous) values(a,'qa-a-'||a||'@example.invalid',now(),false),(b,'qa-b-'||b||'@example.invalid',now(),false);
+ perform set_config('request.jwt.claim.sub',a::text,true);
+ execute 'set local role authenticated';
+ body:=jsonb_build_object('id',sid,'exam','health','mode','subject','ids',jsonb_build_array(q),'startedAt',start_ms,'answers','{}'::jsonb,'completed',false);
+ v:=public.trainer_put_item(op,'session:'||sid,0,body);if v->>'status'<>'saved' then raise exception 'create failed';end if;
+ v:=public.trainer_put_item(op,'session:'||sid,0,body);if not(v->>'retry')::boolean then raise exception 'idempotency failed';end if;
+ v:=public.trainer_put_item(gen_random_uuid(),'session:'||sid,0,body);if v->>'status'<>'conflict' then raise exception 'CAS failed';end if;
+ v:=public.trainer_submit_attempts(sid,jsonb_build_array(jsonb_build_object('id',aid,'questionId',q,'choice',answer,'correct',false,'elapsedMs',1234)),true,true);
+ if not(v->0->>'correct')::boolean or not(v->0->>'first')::boolean then raise exception 'canonical grade or first failed';end if;
+ v:=public.trainer_submit_attempts(sid,jsonb_build_array(jsonb_build_object('id',aid,'questionId',q,'choice',answer)),true,true);
+ if not(v->0->>'duplicate')::boolean then raise exception 'duplicate failed';end if;
+ ok:=false;begin perform public.trainer_put_item(gen_random_uuid(),'session:'||sid,1,jsonb_set(body,'{answers}',jsonb_build_object(q,answer%4+1)));exception when others then ok:=true;end;if not ok then raise exception 'submitted snapshot answer was mutable';end if;
+ perform public.trainer_mark_seen(array[q2]);
+ sid3:=gen_random_uuid()::text;
+ v:=public.trainer_put_item(gen_random_uuid(),'session:'||sid3,0,jsonb_set(jsonb_set(body,'{id}',to_jsonb(sid3)),'{ids}',jsonb_build_array(q2)));
+ v:=public.trainer_submit_attempts(sid3,jsonb_build_array(jsonb_build_object('id',gen_random_uuid(),'questionId',q2,'choice',1)),true,true);
+ if (v->0->>'first')::boolean then raise exception 'revealed question contaminated first response';end if;
+
+ ok:=false;begin perform public.trainer_submit_attempts(sid,jsonb_build_array(jsonb_build_object('id',aid,'questionId',q,'choice',answer%4+1)),true,true);exception when others then ok:=true;end;if not ok then raise exception 'changed answer accepted';end if;
+ v:=public.trainer_put_item(gen_random_uuid(),'session:'||sid2,0,jsonb_set(body,'{id}',to_jsonb(sid2)));
+ v:=public.trainer_submit_attempts(sid2,jsonb_build_array(jsonb_build_object('id',gen_random_uuid(),'questionId',q,'choice',answer%4+1)),true,true);
+ if (v->0->>'first')::boolean then raise exception 'repeat counted as first';end if;
+ v:=public.trainer_progress();if (v->q->>'attempts')::int<>2 or(v->q->>'wrong')::int<>1 then raise exception 'personal progress wrong';end if;
+ ok:=false;begin perform public.trainer_admin_stats();exception when insufficient_privilege then ok:=true;end;if not ok then raise exception 'nonadmin accessed stats';end if;
+ ok:=false;begin perform count(*) from trainer_private.catalog;exception when insufficient_privilege then ok:=true;end;if not ok then raise exception 'private catalog exposed';end if;
+ ok:=false;begin insert into public.trainer_items(user_id,item_key,body) values(a,'note:'||q,'{}');exception when insufficient_privilege then ok:=true;end;if not ok then raise exception 'direct write allowed';end if;
+ perform set_config('request.jwt.claim.sub',b::text,true);
+ select count(*) into n from public.trainer_attempts;if n<>0 then raise exception 'RLS cross-account attempts leak';end if;
+ select count(*) into n from public.trainer_items;if n<>0 then raise exception 'RLS cross-account state leak';end if;
+ ok:=false;begin perform public.trainer_submit_attempts(sid,jsonb_build_array(jsonb_build_object('id',gen_random_uuid(),'questionId',q,'choice',answer)),true,false);exception when others then ok:=true;end;if not ok then raise exception 'cross-account session writable';end if;
+ v:=public.trainer_put_item(gen_random_uuid(),'session:'||sid,0,body);
+ v:=public.trainer_submit_attempts(sid,jsonb_build_array(jsonb_build_object('id',gen_random_uuid(),'questionId',q,'choice',answer)),false,true);
+ if (v->0->>'eligible')::boolean or (v->0->>'first')::boolean then raise exception 'offline contaminated statistics';end if;
+ sid2:=gen_random_uuid()::text;
+ body:=jsonb_build_object('id',sid2,'exam','sports','mode','subject','ids',jsonb_build_array(missing),'startedAt',start_ms,'answers','{}'::jsonb);
+ v:=public.trainer_put_item(gen_random_uuid(),'session:'||sid2,0,body);
+ v:=public.trainer_submit_attempts(sid2,jsonb_build_array(jsonb_build_object('id',gen_random_uuid(),'questionId',missing,'choice',1)),true,true);
+ if v->0->>'correct' is not null or (v->0->>'eligible')::boolean then raise exception 'unknown answer graded';end if;
+ v:=public.trainer_progress();if v?missing then raise exception 'unknown answer in progress';end if;
+ -- Server deadline stays fixed across saves and device transitions.
+ sid2:=gen_random_uuid()::text;
+ body:=jsonb_build_object('id',sid2,'exam','health','mode','mock','ids',jsonb_build_array(q),'groups',jsonb_build_array(jsonb_build_array(q)),'budgets',jsonb_build_array(60000),'phase',0,'stage','quiz','startedAt',start_ms,'deadline',start_ms-1000,'rules',jsonb_build_object('breakMinutes',20));
+ v:=public.trainer_put_item(gen_random_uuid(),'session:'||sid2,0,body);
+ v:=public.trainer_put_item(gen_random_uuid(),'session:'||sid2,1,jsonb_set(body,'{deadline}',to_jsonb(start_ms+60000)));
+ if (v->'item'->'body'->>'deadline')::bigint<>start_ms-1000 then raise exception 'deadline reset allowed';end if;
+ v:=public.trainer_submit_attempts(sid2,jsonb_build_array(jsonb_build_object('id',gen_random_uuid(),'questionId',q,'choice',answer)),true,false);
+ if (v->0->>'eligible')::boolean then raise exception 'late response eligible';end if;
+ -- Legacy import is max-merge, excluded from statistics, retained on retry.
+ v:=jsonb_build_object(q,jsonb_build_object('attempts',4,'correct',3,'wrong',1,'resolved',false,'lastAt',start_ms));
+ perform public.trainer_import_records(v);perform public.trainer_import_records(v);
+ v:=public.trainer_progress();if (v->q->>'attempts')::int<>6 then raise exception 'legacy dedup failed';end if;
+ perform set_config('request.jwt.claim.sub',a::text,true);
+ select t.body into body from public.trainer_items t where item_key='session:'||sid;
+ body:=body||jsonb_build_object('answers',jsonb_build_object(q,answer),'completed',true,'summary',jsonb_build_object('correct',999));
+ v:=public.trainer_put_item(gen_random_uuid(),'session:'||sid,1,body);
+ if (v->'item'->'body'->'summary'->>'correct')::int<>1 or (v->'item'->'body'->'summary'->>'total')::int<>1 then raise exception 'client result summary was trusted';end if;
+ execute 'reset role';insert into trainer_private.admins values(a);
+ perform set_config('request.jwt.claim.sub',a::text,true);execute 'set local role authenticated';
+ stats:=public.trainer_admin_stats('health',null,null,null);
+ select value into v from jsonb_array_elements(stats->'rows') where value->>'question_id'=q;
+ if (v->>'respondents')::int<>1 or (v->>'repeat_count')::int<>1 or(v->>'first_rate')::numeric<>100 then raise exception 'first/repeat aggregates wrong: %',v;end if;
+ if (stats->>'minimum')::int<>50 then raise exception 'default threshold wrong';end if;
+ perform public.trainer_admin_minimum(55);stats:=public.trainer_admin_stats('health',null,null,null);if(stats->>'minimum')::int<>55 then raise exception 'threshold write failed';end if;
+ execute 'set local role anon';ok:=false;begin perform public.trainer_progress();exception when insufficient_privilege then ok:=true;end;if not ok then raise exception 'anonymous allowed';end if;
+ execute 'reset role';
+end $$;
+rollback;

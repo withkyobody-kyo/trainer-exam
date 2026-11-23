@@ -89,6 +89,7 @@ async function submitAnswers(s,ids,reveal){
  box.state.session=clone(s);persist();
  suspendPull++;try{await sync();if(box.queue.some(o=>o.kind==='attempt'&&o.session===s.id)&&!errorText)await sync();}finally{suspendPull--;}
  for(const pending of box.queue)if(pending.kind==='attempt'&&pending.session===s.id)pending.online=false;persist();
+ s.serverVerdicts??={};for(const a of answers){const receipt=box.receipts[a.id];if(receipt&&Object.prototype.hasOwnProperty.call(receipt,'correct'))s.serverVerdicts[a.questionId]=receipt.correct;}
  return Object.fromEntries(answers.map(a=>[a.questionId,box.receipts[a.id]||null]));
 }
 function markSeen(ids){
