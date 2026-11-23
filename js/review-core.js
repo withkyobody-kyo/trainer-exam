@@ -2,11 +2,39 @@
 (function(root){
 'use strict';
 const reasons=['개념 부족','개념 혼동','계산 실수','조건을 놓침','기억이 안 남'];
-function noteParts(text=''){
+const templatePrefix='[오답노트 4단계 v1]\n';
+function legacyNote(text=''){
  const match=String(text).match(/^\[오답 이유: ([^\n]+)\]\n?/);
  return match&&reasons.includes(match[1])?{reason:match[1],text:String(text).slice(match[0].length)}:{reason:'',text:String(text)};
 }
-function withReason(text,reason){const body=noteParts(text).text;return (reason?'[오답 이유: '+reason+']\n':'')+body;}
+function parsedTemplate(text){
+ if(!String(text).startsWith(templatePrefix))return null;
+ try{const t=JSON.parse(String(text).slice(templatePrefix.length));
+  if(t.version!==1||!['',...reasons].includes(t.reason)||!(t.intent===null||typeof t.intent==='string')||!Array.isArray(t.keywords)||t.keywords.length!==3||t.keywords.some(x=>typeof x!=='string')||!t.wrongReasons||typeof t.wrongReasons!=='object'||Array.isArray(t.wrongReasons)||Object.entries(t.wrongReasons).some(([k,v])=>!['1','2','3','4','unknown'].includes(k)||typeof v!=='string')||!(t.rightReason===null||typeof t.rightReason==='string')||typeof t.action!=='string'||typeof t.memo!=='string')return null;
+  return t;
+ }catch(_){return null;}
+}
+function template(text=''){const parsed=parsedTemplate(text);if(parsed)return parsed;const old=legacyNote(text);return {version:1,reason:old.reason,intent:null,keywords:['','',''],wrongReasons:{},rightReason:null,action:'',memo:old.text};}
+function encodeTemplate(t){const text=templatePrefix+JSON.stringify(t);if(text.length>10000)throw Error('오답 정리는 기존 메모를 포함해 10,000자까지 저장할 수 있어요. 내용을 조금 줄여 주세요.');return text;}
+function updateTemplate(text,field,value,key){const t=template(text);if(typeof value!=='string')throw Error('메모 내용은 글자로 입력해 주세요.');
+ if(field==='keyword'&&[0,1,2].includes(Number(key)))t.keywords[Number(key)]=value;
+ else if(field==='wrongReason'&&['1','2','3','4','unknown'].includes(String(key)))t.wrongReasons[key]=value;
+ else if(['intent','rightReason','action','memo'].includes(field))t[field]=value;
+ else if(field==='reason'&&['',...reasons].includes(value))t.reason=value;
+ else throw Error('저장할 항목을 확인해 주세요.');
+ return encodeTemplate(t);
+}
+function noteParts(text=''){
+ const t=parsedTemplate(text);if(!t)return legacyNote(text);
+ return {reason:t.reason,text:[t.intent,t.keywords.filter(Boolean).join(' · '),...Object.values(t.wrongReasons),t.rightReason,t.action,t.memo].filter(Boolean).join('\n')};
+}
+function withReason(text,reason){if(parsedTemplate(text))return updateTemplate(text,'reason',reason);const body=legacyNote(text).text;return (reason?'[오답 이유: '+reason+']\n':'')+body;}
+function suggestions(q,e={}){
+ const available=!e.loading&&!e.loadError&&e.choices?.length===4;
+ const raw=available?(e.keyPoint||e.summary||''):(q.difficultyReview?.reason||'');
+ const line=raw.replace(/\s+/g,' ').trim().match(/^.*?[.!?](?=\s|$)|^.+$/)?.[0]||'';
+ return {intent:line,choices:available?e.choices:[],rightReason:available&&q.answer?.length?q.answer.map(n=>`${n}번: ${e.choices[n-1]}`).join('\n'):'',available};
+}
 function dueAt(r){
  const at=Number(r.resolvedAt||r.lastAt);if(!r.resolved||!Number.isFinite(at)||at<=0)return null;
  const d=new Date(at);d.setHours(0,0,0,0);d.setDate(d.getDate()+3);return d.getTime();
@@ -24,10 +52,10 @@ function compare(a,b,state,sort='priority'){
  return d||a.id.localeCompare(b.id);
 }
 function rows(bank,state,options={},now=Date.now()){
- const {status='ready',subject='all',difficulty='all',search='',sort='priority',repeated=false}=options,query=search.trim().toLocaleLowerCase();
+ const {status='ready',subject='all',difficulty='all',search='',sort='priority',repeated=false,unit='all',reason='all'}=options,query=search.trim().toLocaleLowerCase();
  return bank.filter(q=>{
   const r=state.records[q.id];if(q.exam!==state.exam||!r||!r.wrong||!q.answer?.length)return false;
-  return matches(r,status,now)&&(!repeated||r.wrong>=2)&&(subject==='all'||q.subject===subject)&&(difficulty==='all'||q.difficulty===difficulty)&&(!query||[q.stem,q.subject,q.unit,q.year,q.number,state.notes?.[q.id]].join(' ').toLocaleLowerCase().includes(query));
+  return (unit==='all'||q.unit===unit)&&(reason==='all'||(reason==='none'?!noteParts(state.notes?.[q.id]).reason:noteParts(state.notes?.[q.id]).reason===reason))&&matches(r,status,now)&&(!repeated||r.wrong>=2)&&(subject==='all'||q.subject===subject)&&(difficulty==='all'||q.difficulty===difficulty)&&(!query||[q.stem,q.subject,q.unit,q.year,q.number,noteParts(state.notes?.[q.id]).reason,noteParts(state.notes?.[q.id]).text].join(' ').toLocaleLowerCase().includes(query));
  }).sort((a,b)=>compare(a,b,state,sort));
 }
 function summary(bank,state,now=Date.now()){
@@ -46,6 +74,6 @@ function lastWrongAnswers(state,questions){
  }
  return answers;
 }
-const api={reasons,noteParts,withReason,dueAt,isDue,matches,rows,summary,lastWrongAnswers};
+const api={reasons,hasTemplate:text=>!!parsedTemplate(text),template,encodeTemplate,updateTemplate,suggestions,noteParts,withReason,dueAt,isDue,matches,rows,summary,lastWrongAnswers};
 if(typeof module==='object'&&module.exports)module.exports=api;else root.ReviewCore=api;
 })(typeof window==='object'?window:globalThis);
