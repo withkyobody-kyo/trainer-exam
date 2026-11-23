@@ -164,3 +164,11 @@ https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a
 값은 미분류로 표시합니다. difficultyReview(판단 근거·검토일)와
 questionTypes(문제 유형)도 내보내기·가져오기에서 유지됩니다.
 기존 문제 ID와 정답·해설은 유지하므로 오답·북마크를 초기화할 필요가 없습니다.
+
+회원 로그인·학습 기록 동기화
+- 로그인/동기화: 기존 첫 화면 상단 버튼
+- 관리자 문항 통계: admin.html
+- 설정 순서와 비용/운영 조건: CLOUD-SETUP.txt
+- 실행 가능한 테이블·권한·기준표 SQL: supabase/001~005
+- 실제 메일 발송 검증 전에는 cloud-config.js의 publicSignupReady=false를 유지합니다.
+- 로그인하지 않아도 기존 학습 기능을 사용할 수 있습니다. 현재 작업은 구독 사진 승인·유료 접근 제한 기능과 별개입니다.
