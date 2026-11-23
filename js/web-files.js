@@ -1,17 +1,17 @@
 'use strict';
 // Website images stay external. Portable JSON exports embed the original bytes.
 const WebFiles = (() => {
- async function request(path) {
+ async function request(path,cache='default') {
   const controller=new AbortController();
   const timer=setTimeout(()=>controller.abort(),30000);
   try {
-   const response=await fetch(path,{signal:controller.signal});
+   const response=await fetch(path,{signal:controller.signal,cache});
    if(!response.ok)throw Error(`자료를 불러오지 못했습니다 (${response.status}).`);
    const blob=await response.blob();
    return blob;
   } finally { clearTimeout(timer); }
  }
- async function json(path) { return JSON.parse(await (await request(path)).text()); }
+ async function json(path) { return JSON.parse(await (await request(path,'no-cache')).text()); }
  async function imageData(source) {
   if(typeof source!=='string')throw Error('원문 이미지가 없습니다.');
   if(/^data:image\/(webp|png|jpeg);base64,/.test(source))return source;

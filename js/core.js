@@ -1,5 +1,18 @@
 'use strict';
 const Core = (() => {
+ const difficultyLevels=['하','중','상','미분류'];
+ const questionTypes=['개념 암기','원리 이해','계산','자료 해석','사례 적용'];
+ function normalizeDifficulty(value){const legacy={기초:'하',중급:'중',응용:'상'};return Object.hasOwn(legacy,value)?legacy[value]:(difficultyLevels.includes(value)?value:'미분류');}
+ function filterDifficulty(rows,level='all'){return level==='all'?rows:rows.filter(q=>normalizeDifficulty(q.difficulty)===level);}
+ function difficultyCounts(rows){const counts=Object.fromEntries(difficultyLevels.map(level=>[level,0]));for(const q of rows)counts[normalizeDifficulty(q.difficulty)]++;return counts;}
+ function questionPool(rows,{exam,year='all',type='all',subjects=null,difficulty='all'}={}){
+  return filterDifficulty(rows.filter(q=>(!exam||q.exam===exam)&&(year==='all'||q.year===Number(year))&&(type==='all'||q.type===(type==='official'?'공식 기출':'창작 예상문제'))&&(!subjects||subjects.includes(q.subject))),difficulty);
+ }
+ function validateDifficultyReview(review){
+  if(review===undefined)return undefined;
+  if(!review||review.basis!=='content'||typeof review.reason!=='string'||!review.reason.trim()||review.reason.length>500||typeof review.reviewedAt!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(review.reviewedAt)||review.rubricVersion!==1)throw Error('difficultyReview에는 basis(content), 500자 이내 reason, reviewedAt(YYYY-MM-DD), rubricVersion(1)이 필요합니다.');
+  return {basis:'content',reason:review.reason,reviewedAt:review.reviewedAt,rubricVersion:1};
+ }
  const correct=(q,choice)=>Array.isArray(q.answer)&&q.answer.includes(choice);
  const known=q=>Array.isArray(q.answer)&&q.answer.length>0;
  function shuffle(list,rng=Math.random){const a=list.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
@@ -32,6 +45,8 @@ const Core = (() => {
   rows.forEach((q,i)=>{const prefix=`${i+1}번째 문제`;if(!q||typeof q!=='object'){errors.push(`${prefix}: 올바른 객체가 아닙니다.`);return;}
    const before=errors.length;
    for(const key of ['id','exam','subject','unit','difficulty','type','stem'])if(typeof q[key]!=='string'||!q[key].trim())errors.push(`${prefix}: ${key} 필드가 필요합니다.`);
+   try{validateDifficultyReview(q.difficultyReview);}catch(e){errors.push(`${prefix}: ${e.message}`);}
+   if(q.questionTypes!==undefined&&(!Array.isArray(q.questionTypes)||!q.questionTypes.length||q.questionTypes.length>5||q.questionTypes.some(t=>!questionTypes.includes(t))||new Set(q.questionTypes).size!==q.questionTypes.length))errors.push(`${prefix}: questionTypes는 개념 암기·원리 이해·계산·자료 해석·사례 적용 중 중복 없는 배열이어야 합니다.`);
    if(typeof q.id==='string'){if(['__proto__','constructor','prototype'].includes(q.id)||!/^[A-Za-z0-9_-]{1,120}$/.test(q.id))errors.push(`${prefix}: ID는 영문·숫자·밑줄·하이픈만 사용해 주세요.`);if(seen.has(q.id))errors.push(`${prefix}: 중복 ID "${q.id}"입니다.`);seen.add(q.id);}
    if(!['health','sports'].includes(q.exam))errors.push(`${prefix}: exam은 health 또는 sports여야 합니다.`);
    else if(!config[q.exam].subjects.includes(q.subject))errors.push(`${prefix}: 해당 시험의 과목명이 아닙니다 (${q.subject}).`);
@@ -45,12 +60,12 @@ const Core = (() => {
    if(q.year!==null&&q.year!==undefined&&(!Number.isInteger(q.year)||q.year<1900||q.year>2100))errors.push(`${prefix}: year는 연도 숫자 또는 null이어야 합니다.`);
    if(q.pageId){if(typeof q.pageId!=='string'||(!assets[q.pageId]&&!existingAssets[q.pageId]))errors.push(`${prefix}: 원문 이미지 ${q.pageId}가 없습니다.`);if(!Array.isArray(q.crop)||q.crop.length!==4||q.crop.some(x=>typeof x!=='number'||!Number.isFinite(x)||x<0||x>1)||q.crop[0]>=q.crop[2]||q.crop[1]>=q.crop[3])errors.push(`${prefix}: crop은 0~1 사이의 [왼쪽,위,오른쪽,아래] 좌표여야 합니다.`);}
    if(JSON.stringify(q).length>100000)errors.push(`${prefix}: 텍스트 크기가 너무 큽니다.`);
-   if(errors.length===before)clean.push({id:q.id,exam:q.exam,subject:q.subject,unit:q.unit,difficulty:q.difficulty,type:q.type,year:q.year??null,number:Number.isInteger(q.number)?q.number:i+1,stem:q.stem,choices:q.choices.slice(),answer,explanation:validateExplanation(q.explanation),source:{file:q.source.file,status:q.source.status,note:typeof q.source.note==='string'?q.source.note:'',page:Number.isInteger(q.source.page)?q.source.page:null,answerFile:typeof q.source.answerFile==='string'?q.source.answerFile:''},...(q.pageId?{pageId:q.pageId,crop:q.crop.slice()}: {})});
+   if(errors.length===before)clean.push({id:q.id,exam:q.exam,subject:q.subject,unit:q.unit,difficulty:normalizeDifficulty(q.difficulty),...(q.difficultyReview?{difficultyReview:validateDifficultyReview(q.difficultyReview)}:{}),...(q.questionTypes?{questionTypes:q.questionTypes.slice()}:{}),type:q.type,year:q.year??null,number:Number.isInteger(q.number)?q.number:i+1,stem:q.stem,choices:q.choices.slice(),answer,explanation:validateExplanation(q.explanation),source:{file:q.source.file,status:q.source.status,note:typeof q.source.note==='string'?q.source.note:'',page:Number.isInteger(q.source.page)?q.source.page:null,answerFile:typeof q.source.answerFile==='string'?q.source.answerFile:''},...(q.pageId?{pageId:q.pageId,crop:q.crop.slice()}: {})});
   });
   if(errors.length)throw new Error(errors.slice(0,20).join('\n')+(errors.length>20?`\n외 ${errors.length-20}건의 오류` : ''));
   return {questions:clean,pages:assets};
  }
- return {correct,known,shuffle,summarize,gradeRecord,mockQuestions,validateImport,validateExplanation};
+ return {correct,known,shuffle,summarize,gradeRecord,mockQuestions,validateImport,validateExplanation,difficultyLevels,questionTypes,normalizeDifficulty,filterDifficulty,difficultyCounts,questionPool};
 })();
 if(typeof module!=='undefined'&&module.exports)module.exports=Core;
 
