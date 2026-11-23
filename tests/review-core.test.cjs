@@ -19,3 +19,10 @@ const again={answers:{a:1},graded:{}};C.gradeRecord(st,again,q,now+4*86400000);a
 state.notes.a=R.withReason(note,'개념 혼동');state.session=null;const projected=Cloud.project(state,new Set(bank.map(q=>q.id)));assert.equal(projected['note:a'].text,state.notes.a);
 const restored=Cloud.materialize(Cloud.fresh(),{'note:a':{item_key:'note:a',body:projected['note:a']}},state.records,new Set(['a']));assert.equal(restored.state.notes.a,state.notes.a);
 console.log('PASS: priorities, status/subject/difficulty/note filters, separate exams, three-day review, unknown answers excluded, hidden mock answers, server verdicts, deduped grading, existing note sync');
+// Visible state tabs partition the same historical errors without deleting any record.
+assert.deepEqual(R.rows(bank,state,{status:'complete'},now).map(q=>q.id),['d']);
+const ready=R.rows(bank,state,{status:'ready'},now),complete=R.rows(bank,state,{status:'complete'},now),all=R.rows(bank,state,{status:'all'},now);
+assert.equal(ready.length+complete.length,all.length);assert(!ready.some(q=>complete.includes(q)));
+assert.deepEqual(R.rows(bank,state,{status:'complete',repeated:true},now).map(q=>q.id),['d']);
+assert.deepEqual(R.rows(bank,state,{status:'ready',repeated:true},now).map(q=>q.id),['a']);
+console.log('PASS: non-overlapping review/completed tabs and repeated-error filter combined with status');

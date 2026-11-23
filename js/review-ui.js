@@ -1,57 +1,104 @@
-/* The notebook is a view over the existing records, history and notes. */
+/* A compact view over existing records, history and plain-text notes. */
 let wrongSubject='all',wrongSort='priority',wrongCount=5,wrongSelected=new Set(),wrongReturnId='',wrongScroll=0,reviewOrigin='result';
-function resetWrongFilters(){wrongSubject='all';wrongSort='priority';wrongSelected.clear();listFilter='ready';listSearch='';listDifficulty='all';listPage=1;}
-function wrongOptions(){return {status:listFilter,subject:wrongSubject,difficulty:listDifficulty,search:listSearch,sort:wrongSort};}
+let wrongMoreOpen=false,wrongFrequent=false,wrongSelectMode=false;
+const wrongSortLabels={priority:'추천 순',wrong:'많이 틀린 순',recent:'최근 풀이 순',oldest:'오래된 풀이 순'};
+function resetWrongFilters(){
+ wrongSubject='all';wrongSort='priority';wrongCount=5;wrongSelected.clear();
+ wrongMoreOpen=false;wrongFrequent=false;wrongSelectMode=false;
+ listFilter='ready';listSearch='';listDifficulty='all';listPage=1;
+}
+function wrongOptions(){return {status:listFilter,subject:wrongSubject,difficulty:listDifficulty,search:listSearch,sort:wrongSort,repeated:wrongFrequent};}
 function wrongRows(){return ReviewCore.rows(BANK,state,wrongOptions());}
-function wrongTitle(q){return q.year?`${q.year}년 ${q.subject} · ${q.number}번`:q.stem;}
+function wrongTitle(q){return q.year?`${q.year}년 기출 · ${q.number}번`:q.stem;}
 function wrongDate(at){return Number(at)>0?day(at):'날짜 기록 없음';}
-function wrongStatus(r){return !r.resolved?'<span class="wn-status pending">↺ 복습 대기</span>':ReviewCore.isDue(r)?'<span class="wn-status revisit">◷ 다시 점검</span>':'<span class="wn-status done">✓ 복습 완료</span>';}
+function wrongStatus(r){return !r.resolved?'<span class="wn-status pending">↺ 미해결</span>':ReviewCore.isDue(r)?'<span class="wn-status revisit">◷ 다시 점검</span>':'<span class="wn-status done">✓ 완료</span>';}
+function wrongAdvancedLabels(){return [listDifficulty!=='all'?'난이도 '+listDifficulty:'',wrongFrequent?'2회 이상 오답':'',wrongSort!=='priority'?wrongSortLabels[wrongSort]:'',wrongCount!==5?(wrongCount==='all'?'전체 문항씩':wrongCount+'문항씩'):''].filter(Boolean);}
+function wrongPracticeCount(rows=wrongRows()){return wrongSelectMode?wrongSelected.size:Math.min(rows.length,wrongCount==='all'?rows.length:wrongCount);}
 function wrongNotebook(){
- const counts=ReviewCore.summary(BANK,state),rows=wrongRows(),valid=new Set(rows.map(q=>q.id));wrongSelected=new Set([...wrongSelected].filter(id=>valid.has(id)));
- listPage=Math.max(1,Math.min(listPage,Math.ceil(rows.length/12)||1));const shown=rows.slice((listPage-1)*12,listPage*12),subjects=ReviewCore.rows(BANK,state,{...wrongOptions(),subject:'all'}),subjectCounts=Object.fromEntries(cfg().subjects.map(sub=>[sub,subjects.filter(q=>q.subject===sub).length]));
- const selectedAll=rows.length>0&&rows.every(q=>wrongSelected.has(q.id));
- return `<div class="wrong-notebook"><div class="section-title"><div><div class="eyebrow">REVIEW, UNDERSTAND, REMEMBER</div><h1>오답노트</h1><p>한 번 틀린 문제를, 다음에는 자신 있게.</p></div><span class="wn-total">오답 이력 ${counts.all}문항</span></div>${examTabs()}
- <section class="wn-summary" aria-label="오답 복습 현황">${[['ready','오늘 복습',counts.ready,'미해결 + 다시 점검할 문제'],['repeat','자주 틀림',counts.repeat,'2회 이상 틀린 미해결 문제'],['done','복습 완료',counts.done,'다시 맞힌 문제 · 이력은 보존']].map(([value,label,count,hint])=>`<button class="wn-stat ${listFilter===value?'selected':''}" data-wrong-status="${value}" aria-pressed="${listFilter===value}"><span>${label}</span><strong>${count}<small>문항</small></strong><span class="wn-stat-hint">${hint}</span></button>`).join('')}</section>
- <section class="wn-plan"><div><span class="wn-kicker">짧게 풀고, 오래 기억하기</span><h2>${counts.ready?'오늘은 '+Math.min(5,counts.ready)+'문제부터 시작해요':counts.all?'오늘 복습할 문제를 모두 확인했어요':'첫 오답부터 함께 정리해요'}</h2><p>${counts.ready?'아직 해결하지 못한 문제를 먼저, 자주 틀린 순서로 추천합니다.':counts.all?'다시 맞힌 문제는 3일 뒤부터 점검 대상으로 돌아옵니다.':'틀린 문제는 자동으로 모이고, 다시 맞히면 복습 완료로 바뀝니다.'}</p></div>${counts.ready?`<button class="btn" data-wrong-start="recommended">오늘 추천 ${Math.min(5,counts.ready)}문항 풀기</button>`:counts.all?'<button class="btn" data-wrong-status="all">복습 완료한 문제 살펴보기</button>':'<button class="btn" data-nav="home">첫 문제 풀러 가기</button>'}</section>
- <details class="wn-guide"><summary>오답노트는 이렇게 사용하세요</summary><ol><li><strong>답을 가리고 다시 풀기</strong><span>정답·해설은 직접 확인하기 전까지 보이지 않아요.</span></li><li><strong>틀린 이유와 핵심 한 줄 적기</strong><span>‘오답 분석’에서 개념 혼동, 계산 실수 등을 정리하세요.</span></li><li><strong>3일 뒤 한 번 더 점검하기</strong><span>‘복습 완료’는 다시 맞혔다는 뜻이에요. 숙달 여부를 단정하지 않아요.</span></li></ol><p>3일은 이 사이트의 복습 권장 간격입니다. 기기의 날짜를 기준으로 하며 알림을 보내지는 않습니다.</p></details>
- <section class="card wn-library" aria-label="오답 목록"><div class="wn-library-head"><h2>나의 오답 모아보기</h2><button class="text-button" data-wrong-reset>필터 초기화</button></div>
- <div class="wn-tabs" role="group" aria-label="복습 상태">${[['ready','오늘 복습',counts.ready],['active','복습 대기',counts.active],['due','다시 점검',counts.due],['done','복습 완료',counts.done],['all','전체 이력',counts.all]].map(([value,label,n])=>`<button data-wrong-status="${value}" class="${listFilter===value?'selected':''}" aria-pressed="${listFilter===value}">${label} <span>${n}</span></button>`).join('')}${listFilter==='repeat'?`<button class="selected" data-wrong-status="repeat" aria-pressed="true">자주 틀림 ${counts.repeat}</button>`:''}</div>
- <div class="wn-filters"><label class="wn-search">문제·메모 검색<input id="wrong-search" type="search" value="${esc(listSearch)}" placeholder="과목, 연도, 단원, 나의 메모"></label><label>난이도<select id="wrong-difficulty">${['all',...Core.difficultyLevels].map(d=>`<option value="${d}" ${listDifficulty===d?'selected':''}>${d==='all'?'전체 난이도':'난이도 '+d}</option>`).join('')}</select></label><label>정렬<select id="wrong-sort">${[['priority','추천 순'],['wrong','많이 틀린 순'],['recent','최근 풀이 순'],['oldest','오래된 풀이 순']].map(([v,t])=>`<option value="${v}" ${wrongSort===v?'selected':''}>${t}</option>`).join('')}</select></label></div>
- <div class="wn-subjects" role="group" aria-label="과목 필터"><button data-wrong-subject="all" class="${wrongSubject==='all'?'selected':''}" aria-pressed="${wrongSubject==='all'}">전체 과목 <span>${subjects.length}</span></button>${cfg().subjects.filter(sub=>subjectCounts[sub]||sub===wrongSubject).map(sub=>`<button data-wrong-subject="${esc(sub)}" class="${wrongSubject===sub?'selected':''}" aria-pressed="${wrongSubject===sub}">${esc(sub)} <span>${subjectCounts[sub]}</span></button>`).join('')}</div>
- <div class="wn-list-tools"><label class="wn-select-all"><input type="checkbox" id="wrong-select-all" ${selectedAll?'checked':''} ${rows.length?'':'disabled'}> 검색 결과 전체 선택 <span>(${rows.length})</span></label><div class="wn-start-options"><label for="wrong-count-select">문제 수</label><select id="wrong-count-select" aria-label="복습 문제 수">${[5,10,20,'all'].map(n=>`<option value="${n}" ${wrongCount===n?'selected':''}>${n==='all'?'전체':n+'문항'}</option>`).join('')}</select><button class="btn secondary" data-wrong-start="filtered" ${rows.length?'':'disabled'}>이 조건으로 풀기</button></div></div>
- <div class="wn-result-line" role="status"><span>${rows.length}문항${listSearch?' · “'+esc(listSearch)+'” 검색':''}</span><span>선택 후 원하는 문제만 풀 수 있어요</span></div>
- <div class="wn-list">${shown.length?shown.map((q,i)=>wrongCard(q,(listPage-1)*12+i+1)).join(''):wrongEmpty(counts)}</div>
- ${rows.length>12?`<nav class="pagination" aria-label="오답 목록 페이지"><button class="btn secondary" data-page="${listPage-1}" ${listPage===1?'disabled':''}>이전</button><span>${listPage} / ${Math.ceil(rows.length/12)}</span><button class="btn secondary" data-page="${listPage+1}" ${listPage*12>=rows.length?'disabled':''}>다음</button></nav>`:''}
- </section><div class="wn-batch" id="wrong-batch" ${wrongSelected.size?'':'hidden'}><div><strong id="wrong-selected-count">${wrongSelected.size}문항 선택</strong><button class="text-button" data-wrong-clear>선택 해제</button></div><button class="btn" data-wrong-start="selected">선택한 문제 풀기</button></div></div>`;
+ const counts=ReviewCore.summary(BANK,state),rows=wrongRows(),valid=new Set(rows.map(q=>q.id));
+ wrongSelected=new Set([...wrongSelected].filter(id=>valid.has(id)));
+ listPage=Math.max(1,Math.min(listPage,Math.ceil(rows.length/12)||1));
+ const shown=rows.slice((listPage-1)*12,listPage*12),labels=wrongAdvancedLabels(),count=wrongPracticeCount(rows);
+ return `<section class="wrong-notebook" aria-label="오답노트">
+  <header class="wn-heading"><div><h1>오답노트</h1><p>틀린 문제를 다시 풀고, 핵심만 남겨요.</p></div>
+   ${counts.all?`<button id="wrong-primary" class="btn" data-wrong-start="current" ${count?'':'disabled'}>${count?count+'문항 복습':'문제를 선택하세요'}</button>`:''}
+  </header>
+  <div class="wn-exams" role="group" aria-label="시험 선택">${['health','sports'].map(ex=>`<button data-exam="${ex}" class="${state.exam===ex?'selected':''}" aria-pressed="${state.exam===ex}">${esc(CONFIG[ex].name)}</button>`).join('')}</div>
+  <div class="wn-tabs" role="group" aria-label="복습 상태">${[['ready','다시 풀기',counts.ready],['complete','완료',counts.done-counts.due],['all','전체',counts.all]].map(([value,label,n])=>`<button data-wrong-status="${value}" class="${listFilter===value?'selected':''}" aria-pressed="${listFilter===value}">${label}<span>${n}</span></button>`).join('')}</div>
+  ${counts.all?`<div class="wn-tools">
+   <label class="wn-subject"><span class="wn-sr-only">과목</span><select id="wrong-subject"><option value="all">전체 과목</option>${cfg().subjects.map(sub=>`<option value="${esc(sub)}" ${wrongSubject===sub?'selected':''}>${esc(sub)}</option>`).join('')}</select></label>
+   <label class="wn-search"><span class="wn-sr-only">문제·메모 검색</span><input id="wrong-search" type="search" value="${esc(listSearch)}" placeholder="문제·메모 검색"></label>
+   <button class="wn-filter-toggle ${labels.length?'applied':''}" data-wrong-more aria-expanded="${wrongMoreOpen}" aria-controls="wrong-filter-panel">필터${labels.length?' · '+labels.length:''}<svg aria-hidden="true" viewBox="0 0 16 16"><path d="M2 4h12M4 8h8M6 12h4"/></svg></button>
+  </div>
+  <div id="wrong-filter-panel" class="wn-filter-panel" ${wrongMoreOpen?'':'hidden'}>
+   <label>난이도<select id="wrong-difficulty">${['all',...Core.difficultyLevels].map(d=>`<option value="${d}" ${listDifficulty===d?'selected':''}>${d==='all'?'전체 난이도':'난이도 '+d}</option>`).join('')}</select></label>
+   <label>정렬<select id="wrong-sort">${Object.entries(wrongSortLabels).map(([v,t])=>`<option value="${v}" ${wrongSort===v?'selected':''}>${t}</option>`).join('')}</select></label>
+   <label>한 번에 풀 문제<select id="wrong-count-select">${[5,10,20,'all'].map(n=>`<option value="${n}" ${wrongCount===n?'selected':''}>${n==='all'?'전체':n+'문항'}</option>`).join('')}</select></label>
+   <label class="wn-repeat"><input type="checkbox" id="wrong-repeated" ${wrongFrequent?'checked':''}>2회 이상 틀린 문제만</label>
+  </div>
+  ${labels.length?`<div class="wn-applied"><span>${labels.map(esc).join(' · ')}</span><button data-wrong-reset>초기화</button></div>`:''}
+  <div class="wn-list-tools">
+   ${wrongSelectMode?`<label class="wn-select-all"><input type="checkbox" id="wrong-select-all" ${rows.length?'':'disabled'}>전체 선택</label><span id="wrong-selected-count" role="status">${wrongSelected.size}문항 선택</span>`:`<span class="wn-result-count" role="status">${rows.length}문항${listFilter==='ready'&&wrongSort==='priority'?' · 자주 틀린 문제부터':''}</span>`}
+   <button class="wn-select-toggle" data-wrong-select-mode aria-pressed="${wrongSelectMode}">${wrongSelectMode?'선택 취소':'문제 선택'}</button>
+  </div>`:''}
+  <div class="wn-list">${shown.length?shown.map(q=>wrongCard(q)).join(''):wrongEmpty(counts)}</div>
+  ${rows.length>12?`<nav class="pagination" aria-label="오답 목록 페이지"><button class="btn secondary" data-page="${listPage-1}" ${listPage===1?'disabled':''}>이전</button><span>${listPage} / ${Math.ceil(rows.length/12)}</span><button class="btn secondary" data-page="${listPage+1}" ${listPage*12>=rows.length?'disabled':''}>다음</button></nav>`:''}
+  ${counts.all?`<details class="wn-help"><summary>복습 기준</summary><p>틀린 문제는 자동으로 모입니다. 다시 맞히면 ‘완료’로 옮겨지고, 3일 뒤 ‘다시 풀기’에 표시됩니다. 이전 오답 횟수와 메모는 계속 남아요.</p><p>3일은 사이트의 권장 간격이며 기기의 날짜를 기준으로 합니다. 해설을 읽는 것만으로 완료 처리하지 않습니다.</p></details>`:''}
+ </section>`;
 }
-function wrongCard(q,index){const r=state.records[q.id],note=ReviewCore.noteParts(state.notes[q.id]||''),due=ReviewCore.dueAt(r);return `<article class="wn-card ${wrongSelected.has(q.id)?'picked':''}" id="wrong-card-${esc(q.id)}"><div class="wn-card-top"><label class="wn-pick"><input type="checkbox" data-wrong-select="${esc(q.id)}" ${wrongSelected.has(q.id)?'checked':''} aria-label="${esc(wrongTitle(q))} 선택"><span>${index}</span></label><div class="meta">${badge(q)}${difficultyBadge(q)}<span>${esc(q.subject)}</span></div>${wrongStatus(r)}</div><h3>${esc(wrongTitle(q))}</h3>${q.year&&q.unit?`<p class="wn-unit">${esc(q.unit)}</p>`:''}<div class="wn-record"><span class="wn-errors">${r.wrong>=2?'반복 오답':'오답'} <b>${r.wrong}회</b></span><span>총 ${r.attempts||0}회 풀이</span><span>최근 풀이 ${wrongDate(r.lastAt)}</span>${r.resolved&&due?`<span>${ReviewCore.isDue(r)?'지금 다시 점검해 보세요':wrongDate(due)+'부터 다시 점검'}</span>`:''}</div>${note.reason||note.text?`<div class="wn-note-preview">${note.reason?`<span>${esc(note.reason)}</span>`:''}${note.text?`<p>${esc(note.text)}</p>`:'<p>핵심 개념도 한 줄로 남겨보세요.</p>'}</div>`:''}<div class="wn-card-bottom"><span>${note.text?'✎ 나의 메모가 있어요':'틀린 이유를 정리하면 다음 복습이 쉬워져요'}</span><div><button class="btn secondary" data-wrong-open="${esc(q.id)}">오답 분석</button><button class="btn" data-wrong-practice="${esc(q.id)}">다시 풀기</button></div></div></article>`;}
+function wrongCard(q){
+ const r=state.records[q.id],note=ReviewCore.noteParts(state.notes[q.id]||'');
+ return `<article class="wn-row ${wrongSelected.has(q.id)?'picked':''}" id="wrong-card-${esc(q.id)}">
+  ${wrongSelectMode?`<label class="wn-pick"><input type="checkbox" data-wrong-select="${esc(q.id)}" ${wrongSelected.has(q.id)?'checked':''} aria-label="${esc(q.subject+' '+wrongTitle(q))} 선택"></label>`:''}
+  <div class="wn-row-main"><div class="wn-meta"><span>${esc(q.subject)}</span><span>${q.year?'기출':'창작 예상'}</span><span>난이도 ${esc(Core.normalizeDifficulty(q.difficulty))}</span></div>
+   <h2>${esc(wrongTitle(q))}</h2>
+   <div class="wn-record"><span>오답 <b>${r.wrong}회</b></span><span>${wrongDate(r.lastAt)} 풀이</span>${wrongStatus(r)}</div>
+   ${note.reason||note.text?`<p class="wn-note-preview"><span>메모</span>${esc([note.reason,note.text].filter(Boolean).join(' · '))}</p>`:''}
+  </div><div class="wn-row-actions"><button class="wn-note-button" data-wrong-open="${esc(q.id)}">해설·메모</button><button class="btn secondary" data-wrong-practice="${esc(q.id)}">다시 풀기</button></div>
+ </article>`;
+}
 function wrongEmpty(counts){
- if(!counts.all)return `<div class="wn-empty"><div class="wn-empty-icon" aria-hidden="true">✓</div><h3>아직 모인 오답이 없어요</h3><p>문제를 풀고 정답을 확인하면 틀린 문제를 자동으로 모아드려요.<br>오답 이력은 다시 맞힌 뒤에도 남습니다.</p><button class="btn" data-nav="home">문제 풀러 가기</button></div>`;
- if(listFilter==='ready'&&wrongSubject==='all'&&listDifficulty==='all'&&!listSearch&&!counts.ready)return `<div class="wn-empty"><div class="wn-empty-icon" aria-hidden="true">✓</div><h3>오늘 복습을 마쳤어요</h3><p>복습 완료한 문제는 3일 뒤부터 다시 점검할 수 있어요.<br>지금 더 풀고 싶다면 전체 이력을 확인하세요.</p><button class="btn secondary" data-wrong-status="all">전체 오답 이력 보기</button></div>`;
- return `<div class="wn-empty"><h3>이 조건에 맞는 문제가 없어요</h3><p>다른 과목이나 난이도를 선택하거나 전체 이력을 확인해 보세요.</p><button class="btn secondary" data-wrong-reset>필터 초기화</button></div>`;
+ if(!counts.all)return `<div class="wn-empty"><span class="wn-empty-icon" aria-hidden="true">✓</span><h2>아직 오답이 없어요</h2><p>문제를 풀면 틀린 문항을 여기에 모아드려요.</p><button class="btn" data-nav="home">문제 풀러 가기</button></div>`;
+ if(listFilter==='ready'&&wrongSubject==='all'&&listDifficulty==='all'&&!listSearch&&!wrongFrequent&&!counts.ready)return `<div class="wn-empty"><span class="wn-empty-icon" aria-hidden="true">✓</span><h2>지금 복습할 문제를 모두 풀었어요</h2><p>맞힌 문제는 3일 뒤에 다시 점검해 보세요.</p><button class="btn secondary" data-wrong-status="all">전체 오답 보기</button></div>`;
+ if(listFilter==='complete'&&wrongSubject==='all'&&listDifficulty==='all'&&!listSearch&&!wrongFrequent&&counts.done-counts.due===0)return `<div class="wn-empty"><h2>${counts.done?'다시 점검할 시간이 됐어요':'아직 완료한 문제가 없어요'}</h2><p>${counts.done?'완료했던 문제가 다시 풀기 목록으로 돌아왔어요.':'오답을 다시 맞히면 이곳에서 확인할 수 있어요.'}</p><button class="btn secondary" data-wrong-status="ready">다시 풀 문제 보기</button></div>`;
+ return `<div class="wn-empty"><h2>조건에 맞는 문제가 없어요</h2><p>검색어나 필터를 바꿔보세요.</p><button class="btn secondary" data-wrong-reset>필터 초기화</button></div>`;
 }
-function updateWrongSelection(){const rows=wrongRows(),all=$('#wrong-select-all'),batch=$('#wrong-batch');if(all){all.checked=rows.length>0&&rows.every(q=>wrongSelected.has(q.id));all.indeterminate=wrongSelected.size>0&&!all.checked;}if(batch)batch.hidden=!wrongSelected.size;if($('#wrong-selected-count'))$('#wrong-selected-count').textContent=wrongSelected.size+'문항 선택';}
+function updateWrongSelection(){
+ const rows=wrongRows(),all=$('#wrong-select-all'),button=$('#wrong-primary'),count=wrongPracticeCount(rows);
+ if(all){all.checked=rows.length>0&&rows.every(q=>wrongSelected.has(q.id));all.indeterminate=wrongSelected.size>0&&!all.checked;}
+ if(button){button.disabled=!count;button.textContent=count?count+'문항 복습':wrongSelectMode?'문제를 선택하세요':'복습할 문제가 없어요';button.setAttribute('aria-label',count?(wrongSelectMode?'선택한 ':'')+count+'문항 복습 시작':'복습할 문제 없음');}
+ if($('#wrong-selected-count'))$('#wrong-selected-count').textContent=wrongSelected.size+'문항 선택';
+}
 function wrongFilterChanged(focus){wrongSelected.clear();listPage=1;render();if(focus)$(focus)?.focus();}
 function openWrongAnalysis(id){const rows=wrongRows();reviewSession={ids:rows.map(q=>q.id),answers:ReviewCore.lastWrongAnswers(state,rows)};reviewIndex=reviewSession.ids.indexOf(id);if(reviewIndex<0)return;wrongReturnId=id;wrongScroll=window.scrollY;reviewOrigin='wrong';view='review';render();window.scrollTo({top:0});$('#main').focus({preventScroll:true});}
-function returnWrong(){view='wrong';render();window.scrollTo({top:wrongScroll});const card=document.getElementById('wrong-card-'+wrongReturnId);card?.querySelector('[data-wrong-open]')?.focus({preventScroll:true});}
-function startWrong(kind,id){let rows;if(kind==='recommended')rows=ReviewCore.rows(BANK,state).slice(0,5);else if(kind==='single')rows=[BYID.get(id)].filter(Boolean);else {rows=wrongRows();if(kind==='selected')rows=rows.filter(q=>wrongSelected.has(q.id));else if(wrongCount!=='all')rows=rows.slice(0,wrongCount);}begin(rows.map(q=>q.id),'review','오답 복습'+(kind==='recommended'?' · 오늘 추천':''));}
-function reflectionEditor(q){const parts=ReviewCore.noteParts(state.notes[q.id]||'');return `<section class="wn-reflection" aria-label="나의 오답 정리"><div class="wn-reflection-title"><div><span class="wn-kicker">읽은 내용을 내 것으로</span><h3>왜 틀렸는지, 한 줄로 정리해요</h3></div><span id="note-save-status" class="saved-indicator" role="status"></span></div><fieldset><legend>틀린 이유 <span>선택 사항 · 한 번 더 누르면 해제</span></legend><div class="wn-reasons">${ReviewCore.reasons.map(reason=>`<button type="button" data-wrong-reason="${reason}" data-note-id="${esc(q.id)}" aria-pressed="${parts.reason===reason}" class="${parts.reason===reason?'selected':''}">${reason}</button>`).join('')}</div></fieldset><label for="question-note">다음에는 이렇게 풀기</label><textarea id="question-note" class="note-input" data-note-body="${esc(q.id)}" maxlength="10000" placeholder="헷갈린 개념의 차이, 놓친 조건, 꼭 기억할 공식 등을 내 말로 적어보세요.">${esc(parts.text)}</textarea><p>입력 내용은 자동 저장됩니다. 해설을 읽는 것만으로 복습 완료가 되지는 않아요.</p></section>`;}
-function saveReflection(){clearTimeout(saveTimer);saveTimer=setTimeout(()=>{const ok=save();if($('#note-save-status'))$('#note-save-status').textContent=ok?(window.TrainerCloud?.loggedIn()?'기기에 저장 · 전송 상태는 상단 확인':'✓ 기기에 저장됨'):'저장하지 못했어요';},250);}
+function returnWrong(){view='wrong';render();window.scrollTo({top:wrongScroll});document.getElementById('wrong-card-'+wrongReturnId)?.querySelector('[data-wrong-open]')?.focus({preventScroll:true});}
+function startWrong(kind,id){
+ if(cloudAction)return;
+ let rows=kind==='single'?[BYID.get(id)].filter(Boolean):wrongRows();
+ if(kind!=='single'){if(wrongSelectMode)rows=rows.filter(q=>wrongSelected.has(q.id));else if(wrongCount!=='all')rows=rows.slice(0,wrongCount);}
+ begin(rows.map(q=>q.id),'review','오답 복습');
+}
+function reflectionEditor(q){const parts=ReviewCore.noteParts(state.notes[q.id]||'');return `<section class="wn-reflection" aria-label="나의 오답 정리"><div class="wn-reflection-title"><h3>나의 오답 메모</h3><span id="note-save-status" class="saved-indicator" role="status"></span></div><fieldset><legend>틀린 이유 <span>선택 사항</span></legend><div class="wn-reasons">${ReviewCore.reasons.map(reason=>`<button type="button" data-wrong-reason="${reason}" data-note-id="${esc(q.id)}" aria-pressed="${parts.reason===reason}" title="선택한 이유를 다시 누르면 해제합니다" class="${parts.reason===reason?'selected':''}">${reason}</button>`).join('')}</div></fieldset><label for="question-note">기억할 핵심</label><textarea id="question-note" class="note-input" data-note-body="${esc(q.id)}" maxlength="10000" placeholder="헷갈린 개념이나 다음에 꼭 기억할 것을 적어보세요.">${esc(parts.text)}</textarea><p>입력하면 자동 저장됩니다.</p></section>`;}
+function saveReflection(){clearTimeout(saveTimer);saveTimer=setTimeout(()=>{const ok=save();if($('#note-save-status'))$('#note-save-status').textContent=ok?(window.TrainerCloud?.loggedIn()?'기기에 저장 · 전송 상태는 상단 확인':'✓ 저장됨'):'저장하지 못했어요';},250);}
 document.addEventListener('click',e=>{
  const b=e.target.closest('button');if(!b||b.disabled)return;
  if(b.dataset.wrongStatus){listFilter=b.dataset.wrongStatus;wrongFilterChanged();$$('[data-wrong-status]').find(x=>x.dataset.wrongStatus===listFilter)?.focus();}
- if(b.dataset.wrongSubject){wrongSubject=b.dataset.wrongSubject;wrongFilterChanged();$$('[data-wrong-subject]').find(x=>x.dataset.wrongSubject===wrongSubject)?.focus();}
- if(b.hasAttribute('data-wrong-reset')){resetWrongFilters();listFilter='all';render();$('#wrong-search')?.focus();}
- if(b.hasAttribute('data-wrong-clear')){wrongSelected.clear();$$('[data-wrong-select]').forEach(x=>{x.checked=false;x.closest('.wn-card').classList.remove('picked');});updateWrongSelection();$('#wrong-select-all')?.focus();}
+ if(b.hasAttribute('data-wrong-more')){wrongMoreOpen=!wrongMoreOpen;render();$('[data-wrong-more]')?.focus();}
+ if(b.hasAttribute('data-wrong-reset')){const status=listFilter;resetWrongFilters();listFilter=status;render();$('#wrong-search')?.focus();}
+ if(b.hasAttribute('data-wrong-select-mode')){wrongSelectMode=!wrongSelectMode;wrongSelected.clear();render();$('[data-wrong-select-mode]')?.focus();}
  if(b.dataset.wrongStart)startWrong(b.dataset.wrongStart);
  if(b.dataset.wrongOpen)openWrongAnalysis(b.dataset.wrongOpen);
  if(b.dataset.wrongPractice)startWrong('single',b.dataset.wrongPractice);
  if(b.dataset.wrongReason){const id=b.dataset.noteId,parts=ReviewCore.noteParts(state.notes[id]||''),reason=parts.reason===b.dataset.wrongReason?'':b.dataset.wrongReason,next=ReviewCore.withReason(state.notes[id]||'',reason);if(next.length>10000){toast('메모가 길어 오답 이유를 추가할 수 없습니다. 메모를 조금 줄여 주세요.');return;}state.notes[id]=next;$$('[data-wrong-reason]').forEach(x=>{const selected=x.dataset.wrongReason===reason;x.classList.toggle('selected',selected);x.setAttribute('aria-pressed',String(selected));});saveReflection();}
 });
 document.addEventListener('change',e=>{const el=e.target;
- if(el.dataset.wrongSelect){if(el.checked)wrongSelected.add(el.dataset.wrongSelect);else wrongSelected.delete(el.dataset.wrongSelect);el.closest('.wn-card').classList.toggle('picked',el.checked);updateWrongSelection();}
- if(el.id==='wrong-select-all'){wrongSelected=el.checked?new Set(wrongRows().map(q=>q.id)):new Set();$$('[data-wrong-select]').forEach(x=>{x.checked=wrongSelected.has(x.dataset.wrongSelect);x.closest('.wn-card').classList.toggle('picked',x.checked);});updateWrongSelection();}
- if(el.id==='wrong-difficulty'){listDifficulty=el.value;wrongFilterChanged('#wrong-difficulty');}if(el.id==='wrong-sort'){wrongSort=el.value;wrongFilterChanged('#wrong-sort');}if(el.id==='wrong-count-select')wrongCount=el.value==='all'?'all':Number(el.value);
+ if(el.dataset.wrongSelect){if(el.checked)wrongSelected.add(el.dataset.wrongSelect);else wrongSelected.delete(el.dataset.wrongSelect);el.closest('.wn-row').classList.toggle('picked',el.checked);updateWrongSelection();}
+ if(el.id==='wrong-select-all'){wrongSelected=el.checked?new Set(wrongRows().map(q=>q.id)):new Set();$$('[data-wrong-select]').forEach(x=>{x.checked=wrongSelected.has(x.dataset.wrongSelect);x.closest('.wn-row').classList.toggle('picked',x.checked);});updateWrongSelection();}
+ if(el.id==='wrong-subject'){wrongSubject=el.value;wrongFilterChanged('#wrong-subject');}
+ if(el.id==='wrong-difficulty'){listDifficulty=el.value;wrongFilterChanged('#wrong-difficulty');}
+ if(el.id==='wrong-sort'){wrongSort=el.value;wrongFilterChanged('#wrong-sort');}
+ if(el.id==='wrong-repeated'){wrongFrequent=el.checked;wrongFilterChanged('#wrong-repeated');}
+ if(el.id==='wrong-count-select'){wrongCount=el.value==='all'?'all':Number(el.value);render();$('#wrong-count-select')?.focus();}
 });
 document.addEventListener('input',e=>{const el=e.target;
  if(el.id==='wrong-search'){listSearch=el.value;const pos=el.selectionStart;wrongFilterChanged('#wrong-search');try{$('#wrong-search').setSelectionRange(pos,pos);}catch(_){}}
@@ -59,6 +106,6 @@ document.addEventListener('input',e=>{const el=e.target;
 });
 function wrongAnalysisPage(){
  const s=reviewSession,q=s&&BYID.get(s.ids[reviewIndex]);if(!q)return empty('검토할 문제가 없습니다','오답노트에서 문제를 선택해 주세요.');
- const r=state.records[q.id];return `<div class="study-head wn-analysis-head"><div><div class="eyebrow">REVIEW & REMEMBER</div><h1>오답 분석</h1><p class="subtext">${reviewIndex+1} / ${s.ids.length} · ${esc(q.subject)}</p></div><button class="btn secondary" data-action="back-result">오답 목록으로</button></div><div class="wn-analysis-context">${wrongStatus(r)}<p><strong>누적 ${r.wrong}회 오답</strong> · ${s.answers[q.id]?'마지막으로 틀렸을 때 선택한 답: '+s.answers[q.id]+'번':'이전 선택 답안은 남아 있지 않습니다.'}<br>해설을 확인한 뒤, 답을 가리고 다시 풀어보세요.</p><button class="btn" data-wrong-practice="${esc(q.id)}">이 문제 다시 풀기</button></div><section class="card question-card">${questionBody(q,s,true)}${explanation(q,s)}<div class="study-footer"><button class="btn secondary" data-review-jump="${reviewIndex-1}" ${reviewIndex===0?'disabled':''}>이전 문제</button><button class="btn" data-review-jump="${reviewIndex+1}" ${reviewIndex===s.ids.length-1?'disabled':''}>다음 문제</button></div></section><section class="card section-gap"><h3>현재 목록의 문제</h3><div class="number-grid">${s.ids.map((id,i)=>`<button class="${i===reviewIndex?'current':''}" data-review-jump="${i}" aria-label="${i+1}번 해설">${i+1}</button>`).join('')}</div></section>`;
+ const r=state.records[q.id];return `<div class="wn-analysis-head"><button class="wn-back" data-action="back-result">오답 목록</button><span>${reviewIndex+1} / ${s.ids.length}</span></div><div class="wn-analysis-context"><div><h1>해설·메모</h1><p>${wrongStatus(r)}<span>오답 ${r.wrong}회</span><span>${s.answers[q.id]?'마지막 오답: '+s.answers[q.id]+'번 선택':'이전 선택 답안 없음'}</span></p></div><button class="btn" data-wrong-practice="${esc(q.id)}">다시 풀기</button></div><section class="card question-card">${questionBody(q,s,true)}${explanation(q,s)}<div class="study-footer"><button class="btn secondary" data-review-jump="${reviewIndex-1}" ${reviewIndex===0?'disabled':''}>이전 문제</button><button class="btn" data-review-jump="${reviewIndex+1}" ${reviewIndex===s.ids.length-1?'disabled':''}>다음 문제</button></div></section>`;
 }
-function wrongResultSummary(h){if(h.mode!=='review'||!h.label.includes('오답'))return '';return `<section class="wn-result-summary"><div><h2>다시 맞힌 문제 ${h.summary.correct}개</h2><p>다시 맞힌 문제의 오답 이력과 메모도 그대로 남습니다. 오답노트에서 현재 복습 상태를 확인하세요.</p></div><button class="btn" data-nav="wrong">오답노트에서 이어가기</button></section>`;}
+function wrongResultSummary(h){if(h.mode!=='review'||!h.label.includes('오답'))return '';return `<section class="wn-result-summary"><div><h2>${h.summary.correct}문항을 다시 맞혔어요</h2><p>이전 오답 이력과 메모는 그대로 남습니다.</p></div><button class="btn" data-nav="wrong">오답노트로</button></section>`;}

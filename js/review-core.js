@@ -12,7 +12,7 @@ function dueAt(r){
  const d=new Date(at);d.setHours(0,0,0,0);d.setDate(d.getDate()+3);return d.getTime();
 }
 function isDue(r,now=Date.now()){const at=dueAt(r);return at!==null&&at<=now;}
-function matches(r,status,now){switch(status){case 'ready':return !r.resolved||isDue(r,now);case 'active':return !r.resolved;case 'repeat':return !r.resolved&&r.wrong>=2;case 'due':return isDue(r,now);case 'done':return !!r.resolved;default:return true;}}
+function matches(r,status,now){switch(status){case 'ready':return !r.resolved||isDue(r,now);case 'active':return !r.resolved;case 'repeat':return !r.resolved&&r.wrong>=2;case 'due':return isDue(r,now);case 'complete':return !!r.resolved&&!isDue(r,now);case 'done':return !!r.resolved;default:return true;}}
 function compare(a,b,state,sort='priority'){
  const x=state.records[a.id],y=state.records[b.id];
  const recent=r=>Number(r.lastAt)||0;
@@ -24,10 +24,10 @@ function compare(a,b,state,sort='priority'){
  return d||a.id.localeCompare(b.id);
 }
 function rows(bank,state,options={},now=Date.now()){
- const {status='ready',subject='all',difficulty='all',search='',sort='priority'}=options,query=search.trim().toLocaleLowerCase();
+ const {status='ready',subject='all',difficulty='all',search='',sort='priority',repeated=false}=options,query=search.trim().toLocaleLowerCase();
  return bank.filter(q=>{
   const r=state.records[q.id];if(q.exam!==state.exam||!r||!r.wrong||!q.answer?.length)return false;
-  return matches(r,status,now)&&(subject==='all'||q.subject===subject)&&(difficulty==='all'||q.difficulty===difficulty)&&(!query||[q.stem,q.subject,q.unit,q.year,q.number,state.notes?.[q.id]].join(' ').toLocaleLowerCase().includes(query));
+  return matches(r,status,now)&&(!repeated||r.wrong>=2)&&(subject==='all'||q.subject===subject)&&(difficulty==='all'||q.difficulty===difficulty)&&(!query||[q.stem,q.subject,q.unit,q.year,q.number,state.notes?.[q.id]].join(' ').toLocaleLowerCase().includes(query));
  }).sort((a,b)=>compare(a,b,state,sort));
 }
 function summary(bank,state,now=Date.now()){
