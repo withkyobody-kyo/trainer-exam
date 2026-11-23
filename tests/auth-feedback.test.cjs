@@ -1,0 +1,35 @@
+// Unit test only: no real browser, network, credentials, accounts, or emails.
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),crypto=require('node:crypto');
+const C=require('../js/cloud-core.js');
+let handlers={},renderCount=0,requests=0,pending,focused=false,scrollCount=0,disableWrites=0;
+const values={email:'withkyobody@gmail.com',password:'unit-test-placeholder',consent:'on'};
+const feedback={hidden:true,textContent:'',setAttribute(){},focus(){focused=true;},scrollIntoView(){scrollCount++;}};
+const password={get value(){return values.password;},set value(v){values.password=v;}};
+let disabled=false;
+const button={type:'submit',dataset:{},textContent:'인증 메일 받기',get disabled(){return disabled;},set disabled(v){disableWrites++;disabled=v;},closest:()=>form};
+const form={id:'account-form',querySelector:q=>q==='button[type=submit]'?button:q==='[name="password"]'?password:null,setAttribute(){}};
+const dialog={open:false,addEventListener:(kind,fn)=>handlers[kind]=fn,showModal(){this.open=true;},querySelector:q=>q==='#account-form'?form:q==='#account-feedback'?feedback:null,set innerHTML(v){this.html=v;renderCount++;},get innerHTML(){return this.html;}};
+let dialogCreated=false;
+const document={querySelector:q=>q==='#account-dialog'?(dialogCreated?dialog:null):q==='#account-feedback'?feedback:null,querySelectorAll:()=>[],createElement:()=>{dialogCreated=true;return dialog;},body:{append(){}}};
+const client={auth:{onAuthStateChange(){},getSession:async()=>({data:{session:null}}),signUp:async()=>{requests++;return new Promise(resolve=>pending=resolve);}}};
+const context={console,crypto,structuredClone,document,navigator:{onLine:true},localStorage:{getItem:()=>null,setItem(){}},setTimeout:()=>1,clearTimeout(){},FormData:class{get(k){return values[k];}},supabase:{createClient:()=>client}};
+context.window=context;context.addEventListener=()=>{};context.CloudCore=C;context.TRAINER_CLOUD_CONFIG={enabled:true,url:'test',publishableKey:'test-public',publicSignupReady:false,adminEmail:values.email};
+vm.createContext(context);vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/cloud.js'),'utf8'),context);
+(async()=>{
+ await context.TrainerCloud.init([]);context.TrainerCloud.showAccount();
+ const tab={type:'button',dataset:{authTab:'signup'},closest:()=>null};await handlers.click({target:{closest:()=>tab}});
+ const before=renderCount,disableBefore=disableWrites;
+ await handlers.click({target:{closest:()=>button}});
+ assert.equal(disableWrites,disableBefore,'menu handler must not touch the submit button');
+ const submission=handlers.submit({preventDefault(){},target:form});
+ assert.equal(requests,1);assert.equal(button.textContent,'요청 중…');assert(button.disabled);assert.equal(feedback.hidden,false);
+ await handlers.submit({preventDefault(){},target:form});assert.equal(requests,1,'duplicate click must not send another signup');
+ pending({error:{code:'unexpected_failure',status:500,message:'Error sending confirmation email'}});await submission;
+ assert.match(feedback.textContent,/메일 발송.*실패/);assert.equal(renderCount,before,'error must not erase the form');
+ assert.equal(values.email,'withkyobody@gmail.com');assert.equal(values.password,'unit-test-placeholder');assert.equal(values.consent,'on');assert.equal(button.disabled,false);assert(focused);assert(scrollCount>0);
+ const success=handlers.submit({preventDefault(){},target:form});pending({data:{user:{id:'fake'}},error:null});await success;
+ assert.match(feedback.textContent,/발송 요청이 완료/);assert.equal(values.password,'');assert.equal(values.email,'withkyobody@gmail.com');
+ values.password='unit-test-placeholder';const network=handlers.submit({preventDefault(){},target:form});pending({error:{message:'Failed to fetch'}});await network;
+ assert.match(feedback.textContent,/인터넷 연결/);assert.equal(values.password,'unit-test-placeholder');assert.equal(button.disabled,false);
+ console.log('PASS: native submit untouched, visible progress, duplicate guard, SMTP/network errors visible, input preserved on failure, success clears password');
+})().catch(e=>{console.error(e);process.exitCode=1;});

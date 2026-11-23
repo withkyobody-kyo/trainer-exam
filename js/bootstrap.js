@@ -15,8 +15,8 @@
  }
  try {
   const [config,health,sports,assets]=await Promise.all([
-   WebFiles.json('./data/exam-config.json'),WebFiles.json('./data/health.json?v=20261123-cloud-4'),
-   WebFiles.json('./data/sports.json?v=20261123-cloud-4'),WebFiles.json('./data/page-assets.json')
+   WebFiles.json('./data/exam-config.json'),WebFiles.json('./data/health.json?v=20261123-cloud-5'),
+   WebFiles.json('./data/sports.json?v=20261123-cloud-5'),WebFiles.json('./data/page-assets.json')
   ]);
   if(!config.health||!config.sports||!Array.isArray(health)||!Array.isArray(sports))throw Error('설정 형식을 확인해 주세요.');
   for(const [id,path] of Object.entries(assets)){
@@ -33,7 +33,7 @@
   window.MotionNoteData={config,questions,assets,validationAssets};
   await window.TrainerCloud?.init(questions);
   await new Promise((resolve,reject)=>{
-   const app=document.createElement('script');app.src='./js/app.js?v=20261123-cloud-4';
+   const app=document.createElement('script');app.src='./js/app.js?v=20261123-cloud-5';
    app.onload=resolve;app.onerror=()=>reject(Error('학습 화면을 불러오지 못했습니다.'));
    document.head.append(app);
   });

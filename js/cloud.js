@@ -2,7 +2,7 @@
 'use strict';
 const C=window.CloudCore,CFG=window.TRAINER_CLOUD_CONFIG,guestKey='motionnote.study.v1';
 const id=()=>crypto.randomUUID(),clone=C.clone,esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let editSerial=0,suspendPull=0;
+let editSerial=0,suspendPull=0,authBusy=false;
 let client,user=null,box=null,known=new Set(),bridge=null,projection={},timer,running=null,generation=0,ready=false,recovery=false,admin=false,active=[],status='기기에 저장',errorText='',authTab='login',notice='';
 const cacheKey=u=>'trainer.cloud.v1.'+u;
 const emptyBox=()=>({state:C.fresh(),items:{},queue:[],conflicts:{},receipts:{},seen:[],imported:false});
@@ -148,22 +148,57 @@ function showAccount(){
  }
  if(!d.open)d.showModal();
 }
+function authFeedback(message,isError=false){
+ notice=message;
+ const feedback=document.querySelector('#account-feedback');
+ if(!feedback)return;
+ feedback.hidden=false;feedback.className='note '+(isError?'warning':'success');
+ feedback.setAttribute('role',isError?'alert':'status');feedback.setAttribute('tabindex','-1');
+ feedback.textContent=message;feedback.focus({preventScroll:true});feedback.scrollIntoView({block:'nearest'});
+}
+function authFailure(error){
+ if(error?.name==='AbortError'||/abort|timeout/i.test(error?.message||''))return '서버 응답을 확인하지 못했습니다. 메일함을 확인한 뒤 잠시 후 다시 시도해 주세요.';
+ if(!navigator.onLine||/fetch|network|load failed/i.test(error?.message||''))return '인터넷 연결을 확인해 주세요. 입력 내용은 이 창에 유지됩니다.';
+ const messages={invalid_credentials:'이메일 또는 비밀번호가 일치하지 않습니다.',email_not_confirmed:'이메일 인증을 먼저 완료해 주세요.',over_email_send_rate_limit:'메일 발송 한도에 도달했습니다. 잠시 후 다시 시도해 주세요.',over_request_rate_limit:'요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.',weak_password:'다른 사람이 추측하기 어려운 비밀번호를 사용해 주세요.',email_address_invalid:'이메일 주소 형식을 확인해 주세요.',unexpected_failure:'인증 메일 발송 또는 가입 처리에 실패했습니다. 운영자의 메일 발송 설정을 확인해야 합니다. 입력한 비밀번호를 다시 바꿀 필요는 없습니다.'};
+ if(messages[error?.code])return messages[error.code];
+ if(/sending.*email|smtp|535/i.test(error?.message||''))return '인증 메일을 보내지 못했습니다. 운영자의 메일 발송 설정을 확인해야 합니다.';
+ return safeError(error);
+}
 async function authSubmit(event){
- event.preventDefault();const form=event.target,button=form.querySelector('button[type=submit]'),values=new FormData(form);button.disabled=true;button.textContent='요청 중…';notice='';
+ event.preventDefault();
+ const form=event.target;if(form.id!=='account-form'||authBusy)return;
+ const button=form.querySelector('button[type=submit]');if(!button)return;
+ const buttonLabel=button.textContent;authBusy=true;button.disabled=true;button.textContent='요청 중…';form.setAttribute('aria-busy','true');
+ document.querySelectorAll('[data-auth-tab]').forEach(b=>b.disabled=true);
+ authFeedback('가입·로그인 서버에 요청하고 있습니다. 잠시만 기다려 주세요.');
  try{
-  let r;const email=String(values.get('email')||'').trim(),password=String(values.get('password')||'');
+  const values=new FormData(form),email=String(values.get('email')||'').trim(),password=String(values.get('password')||'');
+  if(!client)throw Error('로그인 연결을 준비하지 못했습니다. 페이지를 새로고침해 주세요.');
+  if(!navigator.onLine)throw Error('인터넷 연결을 확인해 주세요. 입력 내용은 이 창에 유지됩니다.');
+  let r;
   if(recovery){r=await client.auth.updateUser({password});if(!r.error){recovery=false;notice='비밀번호를 변경했습니다.';}}
   else if(authTab==='login')r=await client.auth.signInWithPassword({email,password});
   else if(authTab==='signup'){
-   if(!CFG.publicSignupReady&&email.toLowerCase()!==CFG.adminEmail)throw Error('메일 발송 검증 후 일반 회원가입을 공개합니다.');
-   r=await client.auth.signUp({email,password,options:{emailRedirectTo:CFG.redirectUrl,data:{learning_consent:CFG.consentVersion}}});if(!r.error)notice='인증 메일을 확인해 주세요. 받은편지함과 스팸함을 확인한 뒤 링크를 눌러 로그인하세요.';
-  }else{r=await client.auth.resetPasswordForEmail(email,{redirectTo:CFG.redirectUrl});if(!r.error)notice='해당 계정으로 재설정 메일을 요청했습니다. 메일의 링크를 눌러 새 비밀번호를 설정하세요.';}
+   if(!CFG.publicSignupReady&&email.toLowerCase()!==CFG.adminEmail)throw Error('현재 테스트 가입은 '+CFG.adminEmail+' 계정으로 진행해 주세요. 이메일 주소를 확인해 주세요.');
+   r=await client.auth.signUp({email,password,options:{emailRedirectTo:CFG.redirectUrl,data:{learning_consent:CFG.consentVersion}}});
+  }else r=await client.auth.resetPasswordForEmail(email,{redirectTo:CFG.redirectUrl});
   if(r.error)throw r.error;
-  form.reset();showAccount();
- }catch(e){notice=({invalid_credentials:'이메일 또는 비밀번호가 일치하지 않습니다.',email_not_confirmed:'이메일 인증을 먼저 완료해 주세요.',over_email_send_rate_limit:'메일 발송 한도에 도달했습니다. 잠시 후 다시 시도해 주세요.',weak_password:'다른 사람이 추측하기 어려운 비밀번호를 사용해 주세요.',unexpected_failure:'메일 발송 또는 가입 처리에 실패했습니다. 운영자가 메일 발송 설정을 확인해야 합니다.'})[e.code]||safeError(e);showAccount();}
+  const passwordInput=form.querySelector('[name="password"]');if(passwordInput)passwordInput.value='';
+  if(authTab==='signup')authFeedback('✓ 인증 메일 발송 요청이 완료됐습니다. 받은편지함과 스팸함을 확인하고 메일의 인증 링크를 눌러 주세요.');
+  else if(authTab==='reset')authFeedback('✓ 비밀번호 재설정 메일을 요청했습니다. 받은 메일의 링크를 눌러 새 비밀번호를 설정해 주세요.');
+  else {notice=notice||'로그인했습니다.';showAccount();}
+ }catch(error){authFeedback(authFailure(error),true);}
+ finally{
+  authBusy=false;button.disabled=false;button.textContent=buttonLabel;form.setAttribute('aria-busy','false');
+  document.querySelectorAll('[data-auth-tab]').forEach(b=>b.disabled=false);
+ }
 }
+
 async function accountClick(e){
  const b=e.target.closest('button');if(!b)return;
+ // Native form submission owns this button; menu clicks must not disable or re-render it.
+ if(b.type==='submit'&&b.closest('#account-form'))return;
+ if(authBusy&&b.dataset.cloud!=='close')return;
  if(b.dataset.authTab){authTab=b.dataset.authTab;notice='';showAccount();return;}
  b.disabled=true;
  try{
